@@ -1,7 +1,7 @@
 <template>
   <el-container class="app-shell">
     <el-header height="auto" class="app-header">
-      <TheHeader />
+      <TheHeader @refresh="$emit('refresh')" @shutdown="$emit('shutdown')" />
       <SearchSection />
     </el-header>
     <el-container class="app-main">
@@ -23,6 +23,11 @@ import SearchSection from './SearchSection.vue'
 import AppSwitcher from './AppSwitcher.vue'
 import ConsoleOutput from '../console/ConsoleOutput.vue'
 import StatusBar from './StatusBar.vue'
+
+defineEmits<{
+  refresh: []
+  shutdown: []
+}>()
 </script>
 
 <style scoped>
@@ -31,11 +36,11 @@ import StatusBar from './StatusBar.vue'
   display: flex;
   flex-direction: column;
   background: #f5f7fa;
+  border: 2px solid #1a1a2e;
 }
 .app-header {
   flex-shrink: 0;
   background: #fff;
-  border-bottom: 2px solid #1a1a2e;
   padding: 0;
 }
 .app-main {
@@ -53,7 +58,7 @@ import StatusBar from './StatusBar.vue'
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-left: 2px solid #1a1a2e;
+  border-left: 3px solid #1a1a2e;
   background: var(--el-bg-color-page);
 }
 </style>

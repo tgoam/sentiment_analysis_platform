@@ -19,8 +19,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { VideoPlay } from '@element-plus/icons-vue'
+import { startApp } from '@/api/apps'
+import { ElMessage } from 'element-plus'
 
 const props = withDefaults(defineProps<{
   appName: string
@@ -31,10 +33,16 @@ const props = withDefaults(defineProps<{
   autoSearch: '',
 })
 
+const emit = defineEmits<{
+  started: []
+}>()
+
 const loaded = ref(false)
 const loading = ref(false)
 
-const placeholderText = computed(() => `${props.appName} Engine 未启动`)
+const engineName = computed(() => props.appName.replace(/\s*Engine\s*/i, '').toLowerCase())
+
+const placeholderText = computed(() => `${props.appName} 未启动`)
 
 const src = computed(() => {
   const base = `${window.location.protocol}//${window.location.hostname}:${props.port}`
@@ -44,22 +52,48 @@ const src = computed(() => {
   return base
 })
 
-function startIframe() {
+async function startIframe() {
   loading.value = true
-  // The parent should start the engine via API, then loaded becomes true
-  setTimeout(() => { loading.value = false; loaded.value = true }, 1000)
+  try {
+    await startApp(engineName.value)
+    loaded.value = true
+    emit('started')
+  } catch (e: any) {
+    ElMessage.error(e?.message || `${props.appName} 启动失败`)
+  } finally {
+    loading.value = false
+  }
 }
 
 function onLoad() {
   loaded.value = true
 }
 
-function refresh(query?: string) {
-  loaded.value = true
+// Auto-display iframe when engine starts externally
+watch(() => props.running, (running) => {
+  if (running && !loaded.value) {
+    loaded.value = true
+  }
+})
+
+// Push search queries to already-loaded iframes
+watch(() => props.autoSearch, (query) => {
   if (query) {
-    const iframe = document.querySelector('.iframe-view') as HTMLIFrameElement
-    if (iframe) {
-      iframe.src = `${window.location.protocol}//${window.location.hostname}:${props.port}?query=${encodeURIComponent(query)}&auto_search=true`
+    refresh(query)
+  }
+})
+
+function refresh(query?: string) {
+  if (!loaded.value) {
+    loaded.value = true
+  }
+  const iframeEl = document.querySelector('.iframe-view') as HTMLIFrameElement
+  if (iframeEl) {
+    const base = `${window.location.protocol}//${window.location.hostname}:${props.port}`
+    if (query) {
+      iframeEl.src = `${base}?query=${encodeURIComponent(query)}&auto_search=true`
+    } else {
+      iframeEl.src = base
     }
   }
 }

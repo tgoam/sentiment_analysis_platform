@@ -131,6 +131,11 @@ export const useReportStore = defineStore('report', () => {
       case 'status':
         if (task) currentTask.value = task
         break
+      case 'html_ready':
+        if (task) currentTask.value = task
+        else if (currentTask.value) currentTask.value.report_file_ready = true
+        autoPreviewLoaded.value = true
+        break
       case 'completed':
         if (task) currentTask.value = task
         autoPreviewLoaded.value = true

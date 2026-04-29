@@ -8,11 +8,22 @@
       </div>
       <div class="viewer-controls">
         <el-input
-          v-model="graphStore.searchQuery"
+          v-model="searchQuery"
           placeholder="搜索节点..."
           size="small"
           clearable
-        />
+          @keyup.enter="runSearch"
+          @clear="clearSearch"
+        >
+          <template #suffix>
+            <el-icon class="search-trigger" @click="runSearch"><Search /></el-icon>
+          </template>
+        </el-input>
+        <div v-if="searchMatchTotal > 0" class="search-nav">
+          <el-button size="small" text :icon="ArrowUp" :disabled="searchMatchIndex <= 0" @click="stepSearch(-1)" />
+          <span class="search-count">{{ searchMatchIndex + 1 }}/{{ searchMatchTotal }}</span>
+          <el-button size="small" text :icon="ArrowDown" :disabled="searchMatchIndex >= searchMatchTotal - 1" @click="stepSearch(1)" />
+        </div>
       </div>
       <div v-if="graphStore.selectedNode" class="viewer-node-detail">
         <h5>{{ graphStore.selectedNode.label }}</h5>
@@ -47,6 +58,7 @@
       </div>
       <VisNetworkGraph
         v-else
+        ref="visRef"
         :nodes="graphStore.nodes"
         :edges="graphStore.edges"
         height="calc(100vh - 40px)"
@@ -57,14 +69,21 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, Loading, WarningFilled, Picture } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowUp, ArrowDown, Search, Loading, WarningFilled, Picture } from '@element-plus/icons-vue'
 import { useGraphStore } from '@/stores/graph'
 import VisNetworkGraph from '@/components/graph/VisNetworkGraph.vue'
 
 const route = useRoute()
 const graphStore = useGraphStore()
+const visRef = ref<InstanceType<typeof VisNetworkGraph> | null>(null)
+
+// Search state
+const searchQuery = ref('')
+const searchMatchTotal = ref(0)
+const searchMatchIndex = ref(-1)
+let searchMatches: string[] = []
 
 async function loadGraph() {
   const reportId = route.params.reportId as string | undefined
@@ -77,6 +96,43 @@ async function loadGraph() {
 
 function onNodeClick(_nodeId: string, node: any) {
   graphStore.selectNode(node)
+}
+
+function runSearch() {
+  searchMatches = []
+  searchMatchIndex.value = -1
+  const kw = searchQuery.value.trim().toLowerCase()
+  if (!kw) {
+    searchMatchTotal.value = 0
+    return
+  }
+  for (const node of graphStore.nodes) {
+    if (node.label.toLowerCase().includes(kw)) {
+      searchMatches.push(node.id)
+    }
+  }
+  searchMatchTotal.value = searchMatches.length
+  if (searchMatches.length > 0) {
+    searchMatchIndex.value = 0
+    visRef.value?.focusNode(searchMatches[0])
+    visRef.value?.selectNodes([searchMatches[0]])
+  }
+}
+
+function stepSearch(delta: number) {
+  const idx = searchMatchIndex.value + delta
+  if (idx >= 0 && idx < searchMatches.length) {
+    searchMatchIndex.value = idx
+    visRef.value?.focusNode(searchMatches[idx])
+    visRef.value?.selectNodes([searchMatches[idx]])
+  }
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  searchMatchTotal.value = 0
+  searchMatchIndex.value = -1
+  searchMatches = []
 }
 
 onMounted(async () => {
@@ -113,6 +169,22 @@ onMounted(async () => {
 }
 .viewer-controls {
   margin-bottom: 12px;
+}
+.search-trigger {
+  cursor: pointer;
+  color: #909399;
+}
+.search-trigger:hover { color: #409eff; }
+.search-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+.search-count {
+  font-size: 12px;
+  color: #606266;
 }
 .viewer-node-detail {
   margin-top: 12px;

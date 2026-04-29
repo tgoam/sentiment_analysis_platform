@@ -122,10 +122,10 @@ export const useConfigStore = defineStore('config', () => {
             { value: 'BochaAPI', label: 'BochaAPI' },
           ],
         },
-        { key: 'BOCHA_BASE_URL', label: 'Bocha Base URL', type: 'text' },
-        { key: 'BOCHA_WEB_SEARCH_API_KEY', label: 'Bocha API Key', type: 'password' },
-        { key: 'ANSPIRE_BASE_URL', label: 'Anspire Base URL', type: 'text' },
-        { key: 'ANSPIRE_API_KEY', label: 'Anspire API Key', type: 'password' },
+        { key: 'BOCHA_BASE_URL', label: 'Bocha Base URL', type: 'text', condition: { key: 'SEARCH_TOOL_TYPE', value: 'BochaAPI' } },
+        { key: 'BOCHA_WEB_SEARCH_API_KEY', label: 'Bocha API Key', type: 'password', condition: { key: 'SEARCH_TOOL_TYPE', value: 'BochaAPI' } },
+        { key: 'ANSPIRE_BASE_URL', label: 'Anspire Base URL', type: 'text', condition: { key: 'SEARCH_TOOL_TYPE', value: 'AnspireAPI' } },
+        { key: 'ANSPIRE_API_KEY', label: 'Anspire API Key', type: 'password', condition: { key: 'SEARCH_TOOL_TYPE', value: 'AnspireAPI' } },
       ],
     },
     {
@@ -133,7 +133,7 @@ export const useConfigStore = defineStore('config', () => {
       subtitle: 'GraphRAG Settings',
       fields: [
         { key: 'GRAPHRAG_ENABLED', label: '启用 GraphRAG', type: 'select', options: [{ value: 'true', label: '是' }, { value: 'false', label: '否' }] },
-        { key: 'GRAPHRAG_MAX_QUERIES', label: '最大查询次数', type: 'number' },
+        { key: 'GRAPHRAG_MAX_QUERIES', label: '最大查询次数', type: 'number', condition: { key: 'GRAPHRAG_ENABLED', value: 'true' } },
       ],
     },
   ]

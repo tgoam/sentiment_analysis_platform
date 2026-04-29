@@ -40,7 +40,29 @@ export const useForumStore = defineStore('forum', () => {
     try {
       const res = await forumApi.fetchForumLog()
       if (res.data.success) {
-        logPosition.value = res.data.position || 0
+        logPosition.value = res.data.total_lines || 0
+        // Process parsed messages from backend
+        const parsed = res.data.parsed_messages
+        if (parsed && Array.isArray(parsed)) {
+          const existingIds = new Set(messages.value.map(m => m.id))
+          for (const raw of parsed) {
+            const id = `${raw.timestamp}-${raw.sender}-${raw.content?.length || 0}`
+            if (!existingIds.has(id)) {
+              existingIds.add(id)
+              messages.value.push({
+                id,
+                agent: raw.sender || raw.source || 'unknown',
+                content: raw.content || '',
+                timestamp: raw.timestamp || '',
+                type: raw.type === 'host' ? 'host' : raw.type === 'agent' ? 'agent' : 'system',
+              })
+            }
+          }
+          // Trim overflow
+          if (messages.value.length > MAX_MESSAGES) {
+            messages.value = messages.value.slice(-MAX_MESSAGES)
+          }
+        }
       }
       return res.data
     } catch {

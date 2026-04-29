@@ -44,6 +44,7 @@ defineEmits<{
   padding: 8px 20px;
   background: #1a1a2e;
   color: #fff;
+  border-bottom: 3px solid #e6a23c;
 }
 .header-left {
   display: flex;
@@ -56,7 +57,8 @@ defineEmits<{
 }
 .title {
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 800;
+  letter-spacing: 1px;
   margin: 0;
 }
 .header-right {

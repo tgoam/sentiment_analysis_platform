@@ -23,7 +23,7 @@ const apps = [
   { name: 'media', label: 'Media', locked: false },
   { name: 'query', label: 'Query', locked: false },
   { name: 'forum', label: 'Forum', locked: false },
-  { name: 'report', label: 'Report', locked: true },
+  { name: 'report', label: 'Report', locked: false },
 ]
 </script>
 
@@ -33,17 +33,19 @@ const apps = [
   gap: 0;
   background: #1a1a2e;
   padding: 4px;
+  border-bottom: 2px solid #1a1a2e;
 }
 .switcher-tab {
   flex: 1;
   text-align: center;
-  padding: 8px 0;
+  padding: 10px 0;
   color: #888;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  border-radius: 4px;
-  transition: all 0.2s;
+  border-radius: 0;
+  border: 2px solid transparent;
+  transition: all 0.15s;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -52,10 +54,12 @@ const apps = [
 .switcher-tab:hover {
   color: #fff;
   background: rgba(255,255,255,0.08);
+  border-bottom-color: #e6a23c;
 }
 .switcher-tab.active {
   color: #fff;
   background: rgba(255,255,255,0.15);
+  border-bottom-color: #67c23a;
 }
 .switcher-tab.locked {
   opacity: 0.4;

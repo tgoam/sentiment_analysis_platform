@@ -1,42 +1,115 @@
 <template>
-  <div class="forum-chat" ref="chatRef">
-    <div v-if="forumStore.messages.length === 0" class="forum-empty">
-      <el-icon :size="36"><ChatDotRound /></el-icon>
-      <p>Forum Engine 未启动或暂无消息</p>
+  <div class="forum-chat-wrapper">
+    <div class="forum-chat-header">
+      <span class="forum-title">
+        <el-icon><ChatDotRound /></el-icon> Forum 消息
+      </span>
+      <el-button size="small" text :icon="Refresh" @click="manualRefresh" title="刷新消息" />
     </div>
-    <div
-      v-for="msg in forumStore.messages"
-      :key="msg.id"
-      class="forum-message"
-      :class="`msg-${msg.type}`"
-    >
-      <span class="msg-agent">{{ msg.agent }}</span>
-      <span class="msg-time">{{ msg.timestamp }}</span>
-      <div class="msg-content">{{ msg.content }}</div>
+    <div class="forum-chat" ref="chatRef" @scroll="onScroll">
+      <div v-if="forumStore.messages.length === 0" class="forum-empty">
+        <el-icon :size="36"><ChatDotRound /></el-icon>
+        <p>Forum Engine 未启动或暂无消息</p>
+      </div>
+      <div
+        v-for="msg in forumStore.messages"
+        :key="msg.id"
+        class="forum-message"
+        :class="`msg-${msg.type}`"
+      >
+        <span class="msg-agent">{{ msg.agent }}</span>
+        <span class="msg-time">{{ msg.timestamp }}</span>
+        <div class="msg-content">{{ msg.content }}</div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { watch, ref, nextTick } from 'vue'
-import { ChatDotRound } from '@element-plus/icons-vue'
+import { watch, ref, nextTick, onBeforeUnmount } from 'vue'
+import { ChatDotRound, Refresh } from '@element-plus/icons-vue'
 import { useForumStore } from '@/stores/forum'
+import { useAppsStore } from '@/stores/apps'
+import { usePolling } from '@/composables/usePolling'
 
 const forumStore = useForumStore()
+const appsStore = useAppsStore()
 const chatRef = ref<HTMLElement | null>(null)
 
-watch(
-  () => forumStore.messages.length,
-  async () => {
-    await nextTick()
+// Scroll detection
+const userScrolledUp = ref(false)
+let scrollRestTimer: ReturnType<typeof setTimeout> | null = null
+
+function onScroll() {
+  if (!chatRef.value) return
+  const { scrollTop, scrollHeight, clientHeight } = chatRef.value
+  if (scrollTop < scrollHeight - clientHeight - 60) {
+    userScrolledUp.value = true
+    // Re-enable auto-scroll after 3s idle
+    if (scrollRestTimer) clearTimeout(scrollRestTimer)
+    scrollRestTimer = setTimeout(() => { userScrolledUp.value = false }, 3000)
+  } else {
+    userScrolledUp.value = false
+  }
+}
+
+function scrollToBottom() {
+  if (userScrolledUp.value) return
+  nextTick(() => {
     if (chatRef.value) {
       chatRef.value.scrollTop = chatRef.value.scrollHeight
     }
-  },
-)
+  })
+}
+
+onBeforeUnmount(() => {
+  if (scrollRestTimer) clearTimeout(scrollRestTimer)
+})
+
+// Auto-scroll on new messages (respects user scroll position)
+watch(() => forumStore.messages.length, scrollToBottom)
+
+// Polling fallback: 2s interval when forum tab is active
+const forumPolling = usePolling(async () => {
+  await forumStore.fetchLog()
+}, 2000)
+
+watch(() => appsStore.activeApp, (app) => {
+  if (app === 'forum') {
+    forumPolling.start()
+  } else {
+    forumPolling.stop()
+  }
+}, { immediate: true })
+
+async function manualRefresh() {
+  await forumStore.fetchLog()
+  scrollToBottom()
+}
 </script>
 
 <style scoped>
+.forum-chat-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.forum-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-bottom: 1px solid #ebeef5;
+  flex-shrink: 0;
+}
+.forum-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
 .forum-chat {
   flex: 1;
   overflow-y: auto;

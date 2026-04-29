@@ -46,17 +46,33 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Upload, Setting } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { useSearchStore } from '@/stores/search'
 import { useConfigStore } from '@/stores/config'
+import { useAppsStore } from '@/stores/apps'
 
 const searchStore = useSearchStore()
 const configStore = useConfigStore()
+const appsStore = useAppsStore()
 
 const query = ref('')
 
-function handleSearch() {
-  if (query.value.trim()) {
-    searchStore.performSearch(query.value.trim())
+async function handleSearch() {
+  const q = query.value.trim()
+  if (!q) return
+  try {
+    await searchStore.performSearch(q)
+    // Show which engines received the query
+    const engines = ['insight', 'media', 'query'].filter(
+      name => appsStore.apps[name]?.status === 'running'
+    )
+    if (engines.length > 0) {
+      ElMessage.success(`搜索已分发到: ${engines.join(', ')}`)
+    } else {
+      ElMessage.warning('没有运行中的引擎接收搜索')
+    }
+  } catch {
+    ElMessage.error('搜索请求失败')
   }
 }
 
