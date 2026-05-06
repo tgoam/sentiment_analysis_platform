@@ -1,7 +1,7 @@
 """
 Report Engine service layer — framework-agnostic business logic.
 
-Extracted from ReportEngine/flask_interface.py during Phase 2 migration.
+Extracted from ReportEngine during Phase 2 migration.
 Manages task lifecycle, SSE subscribers, log streaming, and report generation.
 """
 

@@ -299,7 +299,7 @@ class GraphStorage:
     图谱存储管理器
     
     将 Graph 对象序列化为 JSON（graphrag.json），路径与 ChapterStorage 输出目录一致，
-    便于 Web/Report 引擎共享。支持按报告ID查找、列举最新图谱，供 Flask API 或
+    便于 Web/Report 引擎共享。支持按报告ID查找、列举最新图谱，供 API 或
     GraphRAGQueryNode 直接读取。
     """
     

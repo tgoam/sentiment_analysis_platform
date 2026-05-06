@@ -15,7 +15,7 @@ class QueryParams:
     """
     查询参数
     
-    由 GraphRAGQueryNode 或 Flask API 注入，控制查询范围：
+    由 GraphRAGQueryNode 或 API 层注入，控制查询范围：
     - keywords: 关键词列表，可为空（空时默认返回各引擎 section 摘要）；
     - node_types: 限定节点类型；None 表示全量；
     - engine_filter: 仅保留指定引擎来源；

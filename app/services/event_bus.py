@@ -1,7 +1,6 @@
 """Publish/subscribe event bus — framework-agnostic event distribution.
 
-Services publish events here. FastAPI SSE (primary) and Flask (optional)
-register handlers to forward events to clients.
+Services publish events here. SSE routers register handlers to forward events to clients.
 """
 
 import threading

@@ -2,7 +2,7 @@
 System service — process management, config, system state.
 
 Extracted from app.py to be framework-agnostic.
-Both Flask (app.py) and FastAPI (routers/) import from here.
+Both the app entry point and routers import from here.
 """
 
 import os

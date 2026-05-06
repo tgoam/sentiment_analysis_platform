@@ -3,8 +3,7 @@
 
 通过 build_orchestration_graph() 构建 StateGraph，
 将"输入检查 → 文件加载 → 报告生成 → 结果提取"串联为
-可追踪的有向图，替代 flask_interface.run_report_generation()
-中的顺序逻辑。
+可追踪的有向图，替代原有的顺序逻辑。
 """
 
 from __future__ import annotations

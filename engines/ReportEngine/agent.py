@@ -68,7 +68,7 @@ class FileCountBaseline:
     该工具用于：
     - 在任务启动时记录 Insight/Media/Query 三个引擎导出的 Markdown 数量；
     - 在后续轮询中快速判断是否有新报告落地；
-    - 为 Flask 层提供“输入是否准备完毕”的依据。
+    - 为上层调度提供”输入是否准备完毕”的依据。
     """
     
     def __init__(self):

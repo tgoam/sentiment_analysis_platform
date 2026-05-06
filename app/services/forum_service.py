@@ -1,7 +1,7 @@
 """
 Forum service — forum log monitoring, parsing, start/stop control.
 
-Uses event_bus.publish() for real-time events instead of direct socketio calls.
+Uses event_bus.publish() for real-time events.
 """
 
 import re
@@ -18,7 +18,7 @@ from app.services.event_bus import publish
 LOG_DIR = Path('logs')
 LOG_DIR.mkdir(exist_ok=True)
 
-# Optional callback for framework-specific init (e.g. Flask socketio start)
+# Optional callback for framework-specific init
 _on_init_forum_log: Optional[Callable[[], None]] = None
 
 

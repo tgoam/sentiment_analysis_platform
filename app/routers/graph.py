@@ -9,7 +9,7 @@ router = APIRouter(tags=["graph"])
 
 
 def _json_result(result: dict) -> JSONResponse:
-    """Return JSON with status code matching Flask convention."""
+    """Return JSON with appropriate status code."""
     success = result.get("success", False)
     if success:
         return JSONResponse(content=result)
