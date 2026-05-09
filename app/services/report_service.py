@@ -7,6 +7,7 @@ Manages task lifecycle, SSE subscribers, log streaming, and report generation.
 
 import os
 import json
+import sys
 import threading
 import time
 from collections import deque, defaultdict
@@ -16,6 +17,15 @@ from queue import Queue, Empty
 from typing import Dict, Any, List, Optional, Callable
 
 from loguru import logger
+
+# 确保 engines/ 和 app/ 在 Python 路径中，使 ReportEngine 等模块可被导入
+_root = Path(__file__).resolve().parent.parent.parent
+_engines_path = str(_root / "engines")
+if _engines_path not in sys.path:
+    sys.path.insert(0, _engines_path)
+_app_path = str(_root / "app")
+if _app_path not in sys.path:
+    sys.path.insert(0, _app_path)
 
 # ── Constants ──────────────────────────────────────────────────────────────
 
@@ -261,27 +271,11 @@ def initialize_report_engine() -> bool:
     """Initialize ReportEngine (idempotent). Returns True on success."""
     global report_agent
     try:
-        import sys
-        from pathlib import Path
-        _root = Path(__file__).resolve().parent.parent.parent
-        _engines_path = str(_root / "engines")
-        if _engines_path not in sys.path:
-            sys.path.insert(0, _engines_path)
-        _app_path = str(_root / "app")
-        if _app_path not in sys.path:
-            sys.path.insert(0, _app_path)
-
         from ReportEngine.agent import create_agent
-        from orchestration import build_orchestration_graph
 
         report_agent = create_agent()
         logger.info("Report Engine初始化成功")
         _setup_log_stream_forwarder()
-
-        report_agent._orchestration_graph = build_orchestration_graph(
-            report_agent, check_engines_ready
-        )
-        logger.info("顶层协调图已构建")
 
         try:
             from ReportEngine.utils.dependency_check import log_dependency_status
@@ -330,34 +324,46 @@ def run_report_generation(task: ReportTask, query: str, custom_template: str = "
         task.update_status("running", 5)
         task.publish_event("stage", {"message": "任务已启动，正在检查输入文件", "stage": "prepare"})
 
-        initial_state = {
-            "query": query,
-            "custom_template": custom_template,
-            "task_id": task.task_id,
-            "stream_handler": stream_handler,
-            "status": "pending",
-        }
-
-        orchestration_graph = getattr(report_agent, "_orchestration_graph", None)
-        if not orchestration_graph:
-            raise RuntimeError("顶层协调图未初始化，请检查 initialize_report_engine")
-
-        final_state = orchestration_graph.invoke(initial_state)
-
-        if final_state.get("status") == "error":
-            error_msg = final_state.get("error", "未知错误")
+        # 直接顺序执行：检查就绪 → 加载文件 → 调用 agent.generate_report
+        check_result = check_engines_ready()
+        if not check_result.get("ready", False):
+            missing = check_result.get("missing_files", [])
+            error_msg = f"输入文件未准备就绪: {missing}"
             task.update_status("error", 0, error_msg)
             return
 
-        html_report = final_state.get("html_content", "")
+        task.publish_event("stage", {"message": "输入文件检查通过，准备载入内容", "stage": "io_ready"})
+
+        latest_files = check_result.get("latest_files", {})
+        content = report_agent.load_input_files(latest_files)
+
+        task.publish_event("stage", {"message": "源数据加载完成，启动生成流程", "stage": "data_loaded"})
+
+        generation_result = report_agent.generate_report(
+            query=query,
+            reports=content.get("reports", []),
+            forum_logs=content.get("forum_logs", ""),
+            custom_template=custom_template,
+            save_report=True,
+            stream_handler=stream_handler,
+            report_id=task.task_id,
+        )
+
+        if not isinstance(generation_result, dict):
+            html_report = str(generation_result)
+            saved_files = {}
+        else:
+            html_report = generation_result.get("html_content", "")
+            saved_files = generation_result
+
         task.publish_event("stage", {"message": "报告生成完毕，准备持久化", "stage": "persist"})
 
         task.html_content = html_report
-        task.report_file_path = final_state.get("report_file_path", "")
-        task.report_file_relative_path = final_state.get("report_file_relative_path", "")
-        task.report_file_name = final_state.get("report_file_name", "")
-        task.state_file_path = final_state.get("state_file_path", "")
-        task.ir_file_path = final_state.get("ir_file_path", "")
+        task.report_file_path = saved_files.get("report_filepath", "")
+        task.report_file_relative_path = saved_files.get("report_relative_path", "")
+        task.report_file_name = saved_files.get("report_filename", "")
+        task.state_file_path = saved_files.get("state_filepath", "")
+        task.ir_file_path = saved_files.get("ir_filepath", "")
 
         task.publish_event("html_ready", {
             "message": "HTML渲染完成，可刷新预览",

@@ -54,7 +54,6 @@ from .graphrag.prompts import (
     format_graph_results_for_prompt
 )
 from app.utils.knowledge_logger import init_knowledge_log
-from .graph import build_report_graph
 
 
 class StageOutputFormatError(ValueError):
@@ -249,8 +248,7 @@ class ReportAgent:
         os.makedirs(self.config.OUTPUT_DIR, exist_ok=True)
         os.makedirs(self.config.DOCUMENT_IR_OUTPUT_DIR, exist_ok=True)
         
-        # 构建 LangGraph 状态图
-        self.graph = build_report_graph(self)
+        # 报告生成采用顺序调用，不再使用 LangGraph 状态图
         
         logger.info("Report Agent已初始化")
         logger.info(f"使用LLM: {self.llm_client.get_model_info()}")
@@ -469,48 +467,384 @@ class ReportAgent:
         else:
             report_id_value = f"report-{uuid4().hex[:8]}"
 
-        initial_state = {
-            "query": query,
-            "reports": reports,
-            "forum_logs": forum_logs,
-            "custom_template": custom_template,
-            "save_report": save_report,
-            "stream_handler": stream_handler,
-            "report_id": report_id_value,
-            "status": "pending",
-        }
+        # 直接按顺序执行各阶段，替代原有的 LangGraph 状态图调用
+        def emit(event_type: str, payload: Dict[str, Any]):
+            if not stream_handler:
+                return
+            try:
+                stream_handler(event_type, payload)
+            except Exception:
+                pass
 
         try:
-            final_state = self.graph.invoke(initial_state)
+            # ── normalize_reports ──
+            self.state.task_id = report_id_value
+            self.state.query = query
+            self.state.metadata.query = query
+            self.state.mark_processing()
+            init_knowledge_log(force_reset=True)
 
+            normalized_reports = self._normalize_reports(reports)
+            logger.info(f"开始生成报告 {report_id_value}: {query}")
+            logger.info(f"输入数据 - 报告数量: {len(reports)}, 论坛日志长度: {len(str(forum_logs))}")
+            emit("stage", {"stage": "agent_start", "report_id": report_id_value, "query": query})
+
+            # ── select_template ──
+            template_result = self._select_template(query, reports, forum_logs, custom_template)
+            template_result = self._ensure_mapping(
+                template_result,
+                "模板选择结果",
+                expected_keys=["template_name", "template_content"],
+            )
+            self.state.metadata.template_used = template_result.get("template_name", "")
+            emit("stage", {
+                "stage": "template_selected",
+                "template": template_result.get("template_name"),
+                "reason": template_result.get("selection_reason"),
+            })
+            emit("progress", {"progress": 10, "message": "模板选择完成"})
+
+            # ── slice_template ──
+            template_content = template_result.get("template_content", "")
+            sections = self._slice_template(template_content)
+            if not sections:
+                raise ValueError("模板无法解析出章节，请检查模板内容。")
+            emit("stage", {"stage": "template_sliced", "section_count": len(sections)})
+
+            # ── design_layout ──
+            template_text = template_result.get("template_content", "")
+            template_overview = self._build_template_overview(template_text, sections)
+            layout_design = self._run_stage_with_retry(
+                "文档设计",
+                lambda: self.document_layout_node.run(
+                    sections, template_text, normalized_reports,
+                    forum_logs, query, template_overview,
+                ),
+                expected_keys=["title", "hero", "tocPlan", "tocTitle"],
+            )
+            emit("stage", {
+                "stage": "layout_designed",
+                "title": layout_design.get("title"),
+                "toc": layout_design.get("tocTitle"),
+            })
+            emit("progress", {"progress": 15, "message": "文档标题/目录设计完成"})
+
+            # ── plan_word_budget ──
+            word_plan = self._run_stage_with_retry(
+                "章节篇幅规划",
+                lambda: self.word_budget_node.run(
+                    sections, layout_design, normalized_reports,
+                    forum_logs, query, template_overview,
+                ),
+                expected_keys=["chapters", "totalWords", "globalGuidelines"],
+                postprocess=self._normalize_word_plan,
+            )
+            emit("stage", {
+                "stage": "word_plan_ready",
+                "chapter_targets": len(word_plan.get("chapters", [])),
+            })
+            emit("progress", {"progress": 20, "message": "章节字数规划已生成"})
+
+            chapter_targets = {
+                entry.get("chapterId"): entry
+                for entry in word_plan.get("chapters", [])
+                if entry.get("chapterId")
+            }
+
+            # ── build_context ──
+            generation_context = self._build_generation_context(
+                query, normalized_reports, forum_logs,
+                template_result, layout_design, chapter_targets,
+                word_plan, template_overview,
+            )
+
+            manifest_meta = {
+                "query": query,
+                "title": layout_design.get("title") or (
+                    f"{query} - 舆情洞察报告" if query else template_result.get("template_name")
+                ),
+                "subtitle": layout_design.get("subtitle"),
+                "tagline": layout_design.get("tagline"),
+                "templateName": template_result.get("template_name"),
+                "selectionReason": template_result.get("selection_reason"),
+                "themeTokens": generation_context.get("theme_tokens", {}),
+                "toc": {
+                    "depth": 3,
+                    "autoNumbering": True,
+                    "title": layout_design.get("tocTitle") or "目录",
+                },
+                "hero": layout_design.get("hero"),
+                "layoutNotes": layout_design.get("layoutNotes"),
+                "wordPlan": {
+                    "totalWords": word_plan.get("totalWords"),
+                    "globalGuidelines": word_plan.get("globalGuidelines"),
+                },
+                "templateOverview": template_overview,
+            }
+            if layout_design.get("themeTokens"):
+                manifest_meta["themeTokens"] = layout_design["themeTokens"]
+            if layout_design.get("tocPlan"):
+                manifest_meta["toc"]["customEntries"] = layout_design["tocPlan"]
+
+            run_dir = self.chapter_storage.start_session(report_id_value, manifest_meta)
+            self._persist_planning_artifacts(run_dir, layout_design, word_plan, template_overview)
+            emit("stage", {"stage": "storage_ready", "run_dir": str(run_dir)})
+
+            # ── init_graphrag (conditional) ──
+            graphrag_enabled = getattr(self.config, "GRAPHRAG_ENABLED", False)
+            knowledge_graph = None
+            graphrag_query_node = None
+            if graphrag_enabled:
+                logger.info("GraphRAG 已启用，开始构建知识图谱...")
+                emit("stage", {"stage": "graphrag_building", "message": "正在构建知识图谱"})
+                try:
+                    knowledge_graph = self._build_knowledge_graph(query, normalized_reports, forum_logs, run_dir)
+                    if knowledge_graph:
+                        graphrag_query_node = GraphRAGQueryNode(self.llm_client)
+                        graph_stats = knowledge_graph.get_stats()
+                        emit("stage", {
+                            "stage": "graphrag_built",
+                            "node_count": graph_stats.get("total_nodes", 0),
+                            "edge_count": graph_stats.get("total_edges", 0),
+                        })
+                        logger.info(f"知识图谱构建完成: {graph_stats}")
+                    else:
+                        logger.warning("知识图谱构建失败，将使用原始流程")
+                        graphrag_enabled = False
+                except Exception as graph_error:
+                    logger.exception(f"GraphRAG 构建异常: {graph_error}")
+                    graphrag_enabled = False
+                    emit("stage", {"stage": "graphrag_error", "error": str(graph_error)})
+
+            # ── generate chapters (sequential loop) ──
+            chapters = []
+            total_chapters = len(sections)
+            chapter_max_attempts = max(
+                self._CONTENT_SPARSE_MIN_ATTEMPTS, self.config.CHAPTER_JSON_MAX_ATTEMPTS
+            )
+
+            for section in sections:
+                logger.info(f"生成章节: {section.title}")
+                emit("chapter_status", {
+                    "chapterId": section.chapter_id,
+                    "title": section.title,
+                    "status": "running",
+                })
+
+                # 章节流式回调
+                def chunk_callback(delta: str, meta: Dict[str, Any], section_ref=section):
+                    emit("chapter_chunk", {
+                        "chapterId": meta.get("chapterId") or section_ref.chapter_id,
+                        "title": meta.get("title") or section_ref.title,
+                        "delta": delta,
+                    })
+
+                # GraphRAG 查询注入
+                chapter_context = generation_context.copy()
+                if graphrag_enabled and knowledge_graph and graphrag_query_node:
+                    try:
+                        max_queries = getattr(self.config, "GRAPHRAG_MAX_QUERIES", 3)
+                        chapter_meta = (
+                            chapter_targets.get(section.chapter_id, {})
+                            if isinstance(chapter_targets, dict) else {}
+                        )
+                        emphasis_value = chapter_meta.get("emphasis") or chapter_meta.get("emphasisPoints") or ""
+                        if isinstance(emphasis_value, list):
+                            emphasis_value = "；".join(str(item) for item in emphasis_value if item)
+                        role_text = getattr(section, "description", None) or chapter_meta.get("rationale") or ""
+                        if not isinstance(role_text, str):
+                            role_text = self._stringify(role_text)
+
+                        section_info = {
+                            "title": section.title,
+                            "id": section.chapter_id,
+                            "role": role_text,
+                            "target_words": chapter_meta.get("targetWords", 500),
+                            "emphasis": emphasis_value,
+                        }
+                        graph_results = graphrag_query_node.run(
+                            section_info,
+                            {
+                                "query": query,
+                                "template_name": template_result.get("template_name"),
+                                "chapters": word_plan.get("chapters", []),
+                            },
+                            knowledge_graph,
+                            max_queries=max_queries,
+                        )
+                        if graph_results and graph_results.get("total_nodes", 0) > 0:
+                            chapter_context["graph_results"] = graph_results
+                            chapter_context["graph_enhancement_prompt"] = format_graph_results_for_prompt(graph_results)
+                            logger.info(
+                                f"章节 {section.title} GraphRAG 查询完成: "
+                                f"{graph_results.get('total_nodes', 0)} 节点"
+                            )
+                    except Exception as gq_err:
+                        logger.warning(f"GraphRAG 查询失败 ({section.title}): {gq_err}")
+
+                # 重试循环
+                chapter_payload = None
+                attempt = 1
+                best_sparse_candidate = None
+                best_sparse_score = -1
+                fallback_used = False
+
+                while attempt <= chapter_max_attempts:
+                    try:
+                        chapter_payload = self.chapter_generation_node.run(
+                            section, chapter_context, run_dir, stream_callback=chunk_callback,
+                        )
+                        break
+                    except (AttributeError, TypeError, KeyError, IndexError, ValueError, json.JSONDecodeError) as structure_error:
+                        error_type = type(structure_error).__name__
+                        logger.warning(
+                            "章节 {title} 生成过程中发生 {error_type}（第 {attempt}/{total} 次尝试），将尝试重新生成: {error}",
+                            title=section.title, error_type=error_type,
+                            attempt=attempt, total=chapter_max_attempts, error=structure_error,
+                        )
+                        emit("chapter_status", {
+                            "chapterId": section.chapter_id,
+                            "title": section.title,
+                            "status": "retrying" if attempt < chapter_max_attempts else "error",
+                            "attempt": attempt, "error": str(structure_error),
+                            "reason": "structure_error", "error_type": error_type,
+                        })
+                        if attempt >= chapter_max_attempts:
+                            raise ChapterJsonParseError(
+                                f"{section.title} 章节因 {error_type} 在 {chapter_max_attempts} 次尝试后仍无法生成: {structure_error}"
+                            ) from structure_error
+                        attempt += 1
+                        continue
+                    except (ChapterJsonParseError, ChapterContentError, ChapterValidationError) as structured_error:
+                        if isinstance(structured_error, ChapterContentError):
+                            error_kind = "content_sparse"
+                            readable_label = "内容密度异常"
+                        elif isinstance(structured_error, ChapterValidationError):
+                            error_kind = "validation"
+                            readable_label = "结构校验失败"
+                        else:
+                            error_kind = "json_parse"
+                            readable_label = "JSON解析失败"
+                        if isinstance(structured_error, ChapterContentError):
+                            candidate = getattr(structured_error, "chapter_payload", None)
+                            candidate_score = getattr(structured_error, "body_characters", 0) or 0
+                            if isinstance(candidate, dict) and candidate_score >= 0:
+                                if candidate_score > best_sparse_score:
+                                    best_sparse_candidate = deepcopy(candidate)
+                                    best_sparse_score = candidate_score
+                        will_fallback = (
+                            isinstance(structured_error, ChapterContentError)
+                            and attempt >= chapter_max_attempts
+                            and attempt >= self._CONTENT_SPARSE_MIN_ATTEMPTS
+                            and best_sparse_candidate is not None
+                        )
+                        logger.warning(
+                            "章节 {title} {label}（第 {attempt}/{total} 次尝试）: {error}",
+                            title=section.title, label=readable_label,
+                            attempt=attempt, total=chapter_max_attempts, error=structured_error,
+                        )
+                        status_value = "retrying" if attempt < chapter_max_attempts or will_fallback else "error"
+                        status_payload = {
+                            "chapterId": section.chapter_id,
+                            "title": section.title,
+                            "status": status_value,
+                            "attempt": attempt, "error": str(structured_error),
+                            "reason": error_kind,
+                        }
+                        if isinstance(structured_error, ChapterValidationError):
+                            validation_errors = getattr(structured_error, "errors", None)
+                            if validation_errors:
+                                status_payload["errors"] = validation_errors
+                        if will_fallback:
+                            status_payload["warning"] = "content_sparse_fallback_pending"
+                        emit("chapter_status", status_payload)
+                        if will_fallback:
+                            logger.warning(
+                                "章节 {title} 达到最大尝试次数，保留字数最多（约 {score} 字）的版本作为兜底输出",
+                                title=section.title, score=best_sparse_score,
+                            )
+                            chapter_payload = self._finalize_sparse_chapter(best_sparse_candidate)
+                            fallback_used = True
+                            break
+                        if attempt >= chapter_max_attempts:
+                            raise
+                        attempt += 1
+                        continue
+                    except Exception as chapter_error:
+                        if not self._should_retry_inappropriate_content_error(chapter_error):
+                            raise
+                        logger.warning(
+                            "章节 {title} 触发内容安全限制（第 {attempt}/{total} 次尝试），准备重新生成: {error}",
+                            title=section.title, attempt=attempt,
+                            total=chapter_max_attempts, error=chapter_error,
+                        )
+                        emit("chapter_status", {
+                            "chapterId": section.chapter_id,
+                            "title": section.title,
+                            "status": "retrying" if attempt < chapter_max_attempts else "error",
+                            "attempt": attempt, "error": str(chapter_error), "reason": "content_filter",
+                        })
+                        if attempt >= chapter_max_attempts:
+                            raise
+                        attempt += 1
+                        continue
+
+                if chapter_payload is None:
+                    raise ChapterJsonParseError(
+                        f"{section.title} 章节JSON在 {chapter_max_attempts} 次尝试后仍无法解析"
+                    )
+
+                chapters.append(chapter_payload)
+                completed_chapters = len(chapters)
+                chapter_progress = 20 + round(80 * completed_chapters / total_chapters)
+                emit("progress", {
+                    "progress": chapter_progress,
+                    "message": f"章节 {completed_chapters}/{total_chapters} 已完成",
+                })
+                completion_status = {
+                    "chapterId": section.chapter_id,
+                    "title": section.title,
+                    "status": "completed",
+                    "attempt": attempt,
+                }
+                if fallback_used:
+                    completion_status["warning"] = "content_sparse_fallback"
+                    completion_status["warningMessage"] = self._CONTENT_SPARSE_WARNING_TEXT
+                emit("chapter_status", completion_status)
+
+            # ── compose_document ──
+            document_ir = self.document_composer.build_document(report_id_value, manifest_meta, chapters)
+            emit("stage", {"stage": "chapters_compiled", "chapter_count": len(chapters)})
+
+            # ── render_html ──
+            html_report = self.renderer.render(document_ir)
+            emit("stage", {"stage": "html_rendered", "html_length": len(html_report)})
+
+            self.state.html_content = html_report
+            self.state.mark_completed()
+
+            # ── persist_report ──
+            saved_files = {}
+            if save_report:
+                saved_files = self._save_report(html_report, document_ir, report_id_value)
+                emit("stage", {"stage": "report_saved", "files": saved_files})
+
+            # ── metrics ──
             generation_time = (datetime.now() - start_time).total_seconds()
             self.state.metadata.generation_time = generation_time
             logger.info(f"报告生成完成，耗时: {generation_time:.2f} 秒")
-
-            def emit(event_type: str, payload: Dict[str, Any]):
-                if not stream_handler:
-                    return
-                try:
-                    stream_handler(event_type, payload)
-                except Exception:
-                    pass
-
             emit("metrics", {"generation_seconds": generation_time})
 
             return {
-                "html_content": final_state.get("html_content", ""),
+                "html_content": html_report,
                 "report_id": report_id_value,
-                **final_state.get("saved_files", {}),
+                **saved_files,
             }
 
         except Exception as e:
             self.state.mark_failed(str(e))
             logger.exception(f"报告生成过程中发生错误: {str(e)}")
-            if stream_handler:
-                try:
-                    stream_handler("error", {"stage": "agent_failed", "message": str(e)})
-                except Exception:
-                    pass
+            emit("error", {"stage": "agent_failed", "message": str(e)})
             raise
     
     def _select_template(self, query: str, reports: List[Any], forum_logs: str, custom_template: str):
