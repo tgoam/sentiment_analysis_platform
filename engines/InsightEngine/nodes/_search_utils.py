@@ -6,10 +6,10 @@ Extracted from the old graph.py _execute_search_and_convert.
 from typing import Any, Dict
 
 from loguru import logger
+from ..context import InsightContext
 
-
-def execute_search_and_convert(ctx, search_output: dict, search_query: str, search_tool: str) -> list[dict]:
-    """Execute search tool and convert results to standard dict list."""
+def execute_search_and_convert(ctx:InsightContext, search_output: dict, search_query: str, search_tool: str) -> list[dict]:
+    """LLM 产出搜索参数 → 这个函数处理工具选择、参数补全、执行搜索、结果裁切和格式化 → 返回干净的 dict 列表喂回给 LLM"""
     kwargs: Dict[str, Any] = {}
 
     if search_tool in ("search_topic_by_date", "search_topic_on_platform"):

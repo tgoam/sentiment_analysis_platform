@@ -1,5 +1,5 @@
 """
-InsightEngine entry point — module-level run_research().
+InsightEngine entry point — 提供模块级别方法： run_research().
 
 The core logic lives in run_research() at module level.
 DeepSearchAgent has been removed; graph.py + context.py handle everything.
@@ -34,7 +34,7 @@ def run_research(
         progress_callback=progress_callback,
     )
 
-    # Quick DB connectivity check
+    # 快速检查本地舆情数据库是否有数据
     try:
         probe = ctx.execute_search("search_hot_content", query, time_period="year", limit=1)
         if not probe.results:

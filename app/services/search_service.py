@@ -116,6 +116,7 @@ def _run_insight_research(query: str) -> Dict[str, Any]:
     )
 
     def progress_callback(data):
+        "回调函数，用以通过SSE机制，在前端展示进度"
         publish("engine_progress", {"engine": "insight", **data})
 
     return run_research(query, config, llm_client, progress_callback)

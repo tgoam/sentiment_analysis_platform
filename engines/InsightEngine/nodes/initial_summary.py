@@ -8,6 +8,7 @@ from copy import deepcopy
 from loguru import logger
 
 from app.services.event_bus import publish
+from app.utils.forum_reader import get_latest_host_speech,format_host_speech_for_prompt
 from ..state import InsightGraphState
 from ..prompts import SYSTEM_PROMPT_FIRST_SUMMARY
 from ..utils.text_processing import (
@@ -16,23 +17,15 @@ from ..utils.text_processing import (
     fix_incomplete_json,
 )
 from ..utils import format_search_results_for_prompt
+from ..context import InsightContext
 
-# Optional forum reader for HOST speech context
-import sys as _sys
-import os as _os
-_sys.path.append(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))))
-try:
-    from utils.forum_reader import get_latest_host_speech, format_host_speech_for_prompt
-    _FORUM_AVAILABLE = True
-except ImportError:
-    _FORUM_AVAILABLE = False
 
 
 class InitialSummaryNode:
     """Generate initial summary for the current paragraph based on search results."""
 
     def __init__(self, ctx):
-        self.ctx = ctx
+        self.ctx:InsightContext = ctx
 
     def __call__(self, state: InsightGraphState) -> dict:
         idx = state["current_paragraph_index"]
@@ -55,17 +48,17 @@ class InitialSummaryNode:
         }
 
         # Attach HOST speech if available
-        if _FORUM_AVAILABLE:
-            try:
-                host_speech = get_latest_host_speech()
-                if host_speech:
-                    summary_input["host_speech"] = host_speech
-                    logger.info(f"  已读取HOST发言，长度: {len(host_speech)}字符")
-            except Exception as e:
-                logger.exception(f"  读取HOST发言失败: {e}")
+        
+        try:
+            host_speech = get_latest_host_speech()
+            if host_speech:
+                summary_input["host_speech"] = host_speech
+                logger.info(f"  已读取HOST发言，长度: {len(host_speech)}字符")
+        except Exception as e:
+            logger.exception(f"  读取HOST发言失败: {e}")
 
         message = json.dumps(summary_input, ensure_ascii=False)
-        if _FORUM_AVAILABLE and "host_speech" in summary_input:
+        if "host_speech" in summary_input:
             message = format_host_speech_for_prompt(summary_input["host_speech"]) + "\n" + message
 
         raw = self.ctx.llm_client.stream_invoke_to_string(SYSTEM_PROMPT_FIRST_SUMMARY, message)
@@ -77,7 +70,7 @@ class InitialSummaryNode:
         return {"paragraphs": updated, "current_reflection_count": 0}
 
     # ── Private helpers ──────────────────────────────────────────────
-
+    
     def _parse_summary(self, output: str) -> str:
         cleaned = remove_reasoning_from_output(output)
         cleaned = clean_json_tags(cleaned)

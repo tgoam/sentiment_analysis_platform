@@ -15,19 +15,21 @@ from ..utils.text_processing import (
     extract_clean_response,
     fix_incomplete_json,
 )
+from ..context import InsightContext
 
 
 class GenerateStructureNode:
     """Generate the report structure (paragraph list) from the user's query."""
 
     def __init__(self, ctx):
-        self.ctx = ctx
+        self.ctx:InsightContext = ctx
 
     def __call__(self, state: InsightGraphState) -> dict:
         query = state["query"]
         self._pc({"status": "structure", "message": "正在生成报告结构...", "progress_pct": 10})
         logger.info(f"\n{'=' * 60}\n[LangGraph] 生成报告结构: {query}")
 
+        # TODO：这里一定要修复掉，完全没有必要使用
         raw = self.ctx.llm_client.stream_invoke_to_string(SYSTEM_PROMPT_REPORT_STRUCTURE, query)
         structure = self._parse_structure(raw)
 

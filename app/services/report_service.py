@@ -371,7 +371,7 @@ def run_report_generation(task: ReportTask, query: str, custom_template: str = "
 
         task.publish_event("stage", {"message": "输入文件检查通过，准备载入内容", "stage": "io_ready"})
 
-        from ReportEngine.agent import generate_report
+        from engines.ReportEngine.agent import generate_report
 
         latest_files = check_result.get("latest_files", {})
         content = _load_input_files(latest_files)

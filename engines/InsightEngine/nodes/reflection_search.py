@@ -16,6 +16,7 @@ from ..utils.text_processing import (
     extract_clean_response,
     fix_incomplete_json,
 )
+from ..context import InsightContext
 from ._search_utils import execute_search_and_convert
 
 
@@ -23,7 +24,7 @@ class ReflectionSearchNode:
     """Generate a reflection (follow-up) search query and execute search."""
 
     def __init__(self, ctx):
-        self.ctx = ctx
+        self.ctx:InsightContext = ctx
 
     def __call__(self, state: InsightGraphState) -> dict:
         idx = state["current_paragraph_index"]

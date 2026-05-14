@@ -17,12 +17,13 @@ from ..utils.text_processing import (
     fix_incomplete_json,
     format_search_results_for_prompt,
 )
+from ..context import MediaContext
 
 import sys as _sys
 import os as _os
 _sys.path.append(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))))
 try:
-    from utils.forum_reader import get_latest_host_speech, format_host_speech_for_prompt
+    from app.utils.forum_reader import get_latest_host_speech, format_host_speech_for_prompt
     _FORUM_AVAILABLE = True
 except ImportError:
     _FORUM_AVAILABLE = False
@@ -32,7 +33,7 @@ class InitialSummaryNode:
     """Generate initial summary for the current paragraph based on search results."""
 
     def __init__(self, ctx):
-        self.ctx = ctx
+        self.ctx:MediaContext = ctx
 
     def __call__(self, state: MediaGraphState) -> dict:
         idx = state["current_paragraph_index"]
@@ -63,6 +64,7 @@ class InitialSummaryNode:
         message = json.dumps(summary_input, ensure_ascii=False)
         if _FORUM_AVAILABLE and "host_speech" in summary_input:
             message = format_host_speech_for_prompt(summary_input["host_speech"]) + "\n" + message
+        # 这里输出了一个json，里面包含了paragraph_latest_state 这个字段
         raw = self.ctx.llm_client.stream_invoke_to_string(SYSTEM_PROMPT_FIRST_SUMMARY, message)
         summary_text = self._parse_summary(raw)
 

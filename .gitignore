@@ -43,3 +43,4 @@ Thumbs.db
 frontend/node_modules/
 frontend/dist/
 frontend/*_engine_streamlit_reports/
+备课/

@@ -25,7 +25,7 @@ def _with_retry(config=None):
 
 
 try:
-    from utils.retry_helper import with_retry, LLM_RETRY_CONFIG  # noqa: F811
+    from app.utils.retry_helper import with_retry, LLM_RETRY_CONFIG  # noqa: F811
 except ImportError:
     with_retry = _with_retry
     LLM_RETRY_CONFIG = None
