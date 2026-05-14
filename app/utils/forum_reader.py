@@ -1,51 +1,87 @@
 """
 Forum日志读取工具
 用于读取forum.log中的最新HOST发言
+
+优先通过 EventBus 订阅获取（内存缓存），文件读取作为兜底。
 """
 
 import re
+import threading
 from pathlib import Path
 from typing import Optional, List, Dict
 from loguru import logger
 
+# ── EventBus-backed cache ──────────────────────────────────────────
+
+_latest_host_speech: Optional[str] = None
+_cache_lock = threading.Lock()
+_subscribed = False
+
+
+def _on_forum_message(event_type: str, data: dict):
+    """EventBus subscriber: cache latest HOST speech in memory."""
+    global _latest_host_speech
+    if event_type == "forum_message" and data.get("type") == "host":
+        content = data.get("content", "")
+        if content:
+            with _cache_lock:
+                _latest_host_speech = content
+
+
+def _ensure_subscribed():
+    """Lazy-register the EventBus subscriber (avoids import-time circular deps)."""
+    global _subscribed
+    if not _subscribed:
+        from app.services.event_bus import subscribe
+        subscribe(_on_forum_message)
+        _subscribed = True
+
+
+# ── Public API ─────────────────────────────────────────────────────
+
 def get_latest_host_speech(log_dir: str = "logs") -> Optional[str]:
     """
-    获取forum.log中最新的HOST发言
-    
+    获取最新的HOST发言。优先使用 EventBus 内存缓存，缓存为空时回退到文件读取。
+
     Args:
-        log_dir: 日志目录路径
-        
+        log_dir: 日志目录路径（仅文件回退时使用）
+
     Returns:
         最新的HOST发言内容，如果没有则返回None
     """
+    _ensure_subscribed()
+
+    # 优先读 EventBus 缓存
+    with _cache_lock:
+        cached = _latest_host_speech
+    if cached is not None:
+        return cached
+
+    # 回退：文件读取（兼容 EventBus 尚未收到消息的场景）
     try:
         forum_log_path = Path(log_dir) / "forum.log"
-        
+
         if not forum_log_path.exists():
             logger.debug("forum.log文件不存在")
             return None
-            
+
         with open(forum_log_path, 'r', encoding='utf-8', errors='ignore') as f:
             lines = f.readlines()
-        
-        # 从后往前查找最新的HOST发言
+
         host_speech = None
         for line in reversed(lines):
-            # 匹配格式: [时间] [HOST] 内容
             match = re.match(r'\[(\d{2}:\d{2}:\d{2})\]\s*\[HOST\]\s*(.+)', line)
             if match:
                 _, content = match.groups()
-                # 处理转义的换行符，还原为实际换行
                 host_speech = content.replace('\\n', '\n').strip()
                 break
-        
+
         if host_speech:
-            logger.info(f"找到最新的HOST发言，长度: {len(host_speech)}字符")
+            logger.info(f"找到最新的HOST发言（文件读取），长度: {len(host_speech)}字符")
         else:
             logger.debug("未找到HOST发言")
-            
         return host_speech
-        
+
     except Exception as e:
         logger.error(f"读取forum.log失败: {str(e)}")
         return None
