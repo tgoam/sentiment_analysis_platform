@@ -45,16 +45,6 @@ def _describe_missing_dependencies() -> str:
     return " / ".join(missing)
 
 
-# 添加项目根目录到路径，以便导入WeiboMultilingualSentiment
-project_root = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
-weibo_sentiment_path = os.path.join(
-    project_root, "SentimentAnalysisModel", "WeiboMultilingualSentiment"
-)
-sys.path.append(weibo_sentiment_path)
-
-
 @dataclass
 class SentimentResult:
     """情感分析结果数据类"""
@@ -182,33 +172,13 @@ class WeiboMultilingualSentimentAnalyzer:
             return True
 
         try:
-            print("正在加载多语言情感分析模型...")
             assert AutoTokenizer is not None
             assert AutoModelForSequenceClassification is not None
 
-            # 从配置读取模型名称
-            model_name = getattr(_app_settings, 'SENTIMENT_MODEL_NAME', "tabularisai/multilingual-sentiment-analysis")
-            local_model_path = os.path.join(weibo_sentiment_path, "model")
-
-            # 若配置的路径是本地目录，直接加载
-            if os.path.isdir(model_name):
-                print(f"从配置的本地路径加载模型: {model_name}")
-                self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-                self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
-            elif os.path.exists(local_model_path):
-                print("从本地缓存加载模型...")
-                self.tokenizer = AutoTokenizer.from_pretrained(local_model_path)
-                self.model = AutoModelForSequenceClassification.from_pretrained(local_model_path)
-            else:
-                print(f"首次使用，正在下载模型 ({model_name}) 到本地...")
-                self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-                self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
-
-                # 缓存到本地
-                os.makedirs(local_model_path, exist_ok=True)
-                self.tokenizer.save_pretrained(local_model_path)
-                self.model.save_pretrained(local_model_path)
-                print(f"模型已缓存到: {local_model_path}")
+            model_name = _app_settings.SENTIMENT_MODEL_NAME
+            print(f"正在加载情感分析模型: {model_name}")
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
 
             # 设置设备
             device = self._select_device()
