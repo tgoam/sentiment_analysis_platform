@@ -158,8 +158,17 @@ class MediaCrawlerDB:
             'zhihu_content':  f"(COALESCE(CAST(voteup_count AS UNSIGNED), 0) * {self.W_LIKE} + COALESCE(CAST(comment_count AS UNSIGNED), 0) * {self.W_COMMENT})",
         }
 
+        # 只查真实存在的表，避免 UNION ALL 因某张表不存在而整体失败
+        rows = self._execute_query("SHOW TABLES")
+        # SHOW TABLES 的列名因数据库而异：MySQL 是 Tables_in_<db>，这里取第一列
+        existing = {list(r.values())[0] for r in rows} if rows else set()
+
         all_queries, params = [], []
         for table, formula in hotness_formulas.items():
+            if table not in existing:
+                logger.debug(f"表 {table} 不存在，跳过")
+                continue
+
             time_filter_sql, time_filter_param = "", None
             if table == 'weibo_note': time_filter_sql, time_filter_param = "`create_date_time` >= %s", start_time.strftime('%Y-%m-%d %H:%M:%S')
             elif table in ['kuaishou_video', 'xhs_note', 'douyin_aweme']: time_col = 'time' if table == 'xhs_note' else 'create_time'; time_filter_sql, time_filter_param = f"`{time_col}` >= %s", str(int(start_time.timestamp() * 1000))
@@ -177,7 +186,10 @@ class MediaCrawlerDB:
 
             all_queries.append(query_template.format(**field_subs))
             params.append(time_filter_param)
-        
+
+        if not all_queries:
+            return DBResponse("search_hot_content", params_for_log, results=[], results_count=0)
+
         final_query = f"({' ) UNION ALL ( '.join(all_queries)}) ORDER BY hotness_score DESC LIMIT %s"
         logger.debug(f"执行的SQL查询为：\n{final_query}\n")
         raw_results = self._execute_query(final_query, tuple(params) + (limit,))
