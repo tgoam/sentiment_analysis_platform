@@ -10,6 +10,7 @@ from loguru import logger
 from app.services.event_bus import publish
 from app.services.event_types import EventType
 from app.utils.forum_reader import get_latest_host_speech, format_host_speech_for_prompt
+from engines.common.structured_output import InitialSummaryOutput
 from ..state import InsightGraphState
 from ..prompts import SYSTEM_PROMPT_FIRST_SUMMARY
 from ..utils import format_search_results_for_prompt
@@ -53,14 +54,15 @@ class InitialSummaryNode:
         if "host_speech" in summary_input:
             message = format_host_speech_for_prompt(summary_input["host_speech"]) + "\n" + message
 
-        raw = self.ctx.llm_client.invoke(SYSTEM_PROMPT_FIRST_SUMMARY, message, json_output=True)
         try:
-            result = json.loads(raw)
-        except json.JSONDecodeError:
-            logger.error(f"JSON解析失败: {raw[:200]}")
-            result = {}
+            out = self.ctx.llm_client.structured_invoke(
+                SYSTEM_PROMPT_FIRST_SUMMARY, message, InitialSummaryOutput,
+            )
+            summary = out.paragraph_latest_state
+        except Exception:
+            logger.exception("结构化总结输出失败")
+            summary = ""
 
-        summary = result.get("paragraph_latest_state", "") or raw
         publish(EventType.SUMMARY_READY, {"source": self.ctx.engine_name, "summary": summary, "type": "initial"})
 
         updated = deepcopy(state["paragraphs"])

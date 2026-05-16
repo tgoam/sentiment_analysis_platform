@@ -2,10 +2,9 @@
 LangGraph node: generate report structure from query.
 """
 
-import json
-
 from loguru import logger
 
+from engines.common.structured_output import ReportStructure
 from ..state import InsightGraphState
 from ..prompts import SYSTEM_PROMPT_REPORT_STRUCTURE
 from ..context import InsightContext
@@ -14,36 +13,31 @@ from ..context import InsightContext
 class GenerateStructureNode:
     """Generate the report structure (paragraph list) from the user's query."""
 
-    def __init__(self, ctx):
-        self.ctx: InsightContext = ctx
+    def __init__(self, ctx: InsightContext):
+        self.ctx = ctx
 
     def __call__(self, state: InsightGraphState) -> dict:
         query = state["query"]
         self.ctx.progress_callback({"status": "structure", "message": "正在生成报告结构...", "progress_pct": 10})
         logger.info(f"\n{'=' * 60}\n[LangGraph] 生成报告结构: {query}")
-        raw = self.ctx.llm_client.invoke(SYSTEM_PROMPT_REPORT_STRUCTURE, query, json_output=True)
-        try:
-            structure = json.loads(raw)
-            if isinstance(structure, dict):
-                structure = [structure]
-        except json.JSONDecodeError:
-            logger.error(f"生成JSON有误：{raw}")
-            structure = self._default_structure()
 
-        if not isinstance(structure, list):
+        try:
+            result = self.ctx.llm_client.structured_invoke(
+                SYSTEM_PROMPT_REPORT_STRUCTURE, query, ReportStructure,
+            )
+            structure = result.paragraphs
+        except Exception:
+            logger.exception("结构化输出失败，使用默认结构")
+            structure = []
+
+        if not structure:
             structure = self._default_structure()
 
         paragraphs = []
         for p in structure:
             paragraphs.append({
-                "title": p["title"],
-                "content": p["content"],
-                "research": {
-                    "search_history": [],
-                    "latest_summary": "",
-                    "is_completed": False,
-                    "reflection_iteration": 0,
-                },
+                "title": p.title, "content": p.content,
+                "research": {"search_history": [], "latest_summary": "", "is_completed": False, "reflection_iteration": 0},
             })
 
         msg = f"报告结构已生成，共 {len(paragraphs)} 个段落:"
