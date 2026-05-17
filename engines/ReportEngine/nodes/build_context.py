@@ -38,7 +38,7 @@ class BuildContextNode:
             "chapter_directives": chapters_map,
             "word_plan": word_plan or {},
         }
-        return {"generation_context": ctx, "graphrag_enabled": getattr(self.ctx.config, "GRAPHRAG_ENABLED", False)}
+        return {"generation_context": ctx}
 
 
 def _default_theme() -> dict:

@@ -2,8 +2,8 @@
 Event-driven forum handler — replaces the file-polling LogMonitor.
 
 Subscribes to summary_ready events from the three search engines,
-buffers them, writes to forum.log for GraphRAG, and periodically
-triggers HOST speech via LLM.
+buffers them, writes to forum.log, and periodically triggers HOST
+speech via LLM.
 """
 
 import threading

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from app.services.forum_service import init_forum_log
-from app.routers import system, config, forum, search, graph, events, report
+from app.routers import system, config, forum, search, events, report
 
 
 @asynccontextmanager
@@ -39,7 +39,6 @@ app.include_router(system.app_status_router)
 app.include_router(config.router)
 app.include_router(forum.router)
 app.include_router(search.router)
-app.include_router(graph.router)
 app.include_router(events.router)
 app.include_router(report.router)
 

@@ -110,9 +110,6 @@ def _make_chapter(chapter_id: str, title: str) -> dict:
 @pytest.fixture
 def agent():
     """Mock business-logic nodes and call generate_report() directly."""
-    import os
-    os.environ["GRAPHRAG_ENABLED"] = "False"
-
     from unittest.mock import patch
     from ReportEngine.agent import generate_report
     from ReportEngine.utils.config import Settings
@@ -124,7 +121,6 @@ def agent():
         OUTPUT_DIR="/tmp/test_report_reports",
         CHAPTER_OUTPUT_DIR="/tmp/test_report_reports/chapters",
         DOCUMENT_IR_OUTPUT_DIR="/tmp/test_report_reports/ir",
-        GRAPHRAG_ENABLED=False,
     )
 
     chapter_responses = {
@@ -181,7 +177,7 @@ class TestReportEngineBehavior:
             REPORT_ENGINE_API_KEY="sk-fake-key", REPORT_ENGINE_MODEL_NAME="test-model",
             REPORT_ENGINE_BASE_URL="https://test.api.com",
             OUTPUT_DIR=str(tmp_path), CHAPTER_OUTPUT_DIR=str(tmp_path / "chapters"),
-            DOCUMENT_IR_OUTPUT_DIR=str(tmp_path / "ir"), GRAPHRAG_ENABLED=False,
+            DOCUMENT_IR_OUTPUT_DIR=str(tmp_path / "ir"),
         ))
         html_content = result.get("html_content", "")
         assert html_content

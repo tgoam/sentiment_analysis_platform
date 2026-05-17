@@ -128,14 +128,6 @@ export const useConfigStore = defineStore('config', () => {
         { key: 'ANSPIRE_API_KEY', label: 'Anspire API Key', type: 'password', condition: { key: 'SEARCH_TOOL_TYPE', value: 'AnspireAPI' } },
       ],
     },
-    {
-      title: 'GraphRAG 配置',
-      subtitle: 'GraphRAG Settings',
-      fields: [
-        { key: 'GRAPHRAG_ENABLED', label: '启用 GraphRAG', type: 'select', options: [{ value: 'true', label: '是' }, { value: 'false', label: '否' }] },
-        { key: 'GRAPHRAG_MAX_QUERIES', label: '最大查询次数', type: 'number', condition: { key: 'GRAPHRAG_ENABLED', value: 'true' } },
-      ],
-    },
   ]
 
   async function refreshFromServer() {

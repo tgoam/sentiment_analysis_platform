@@ -2,7 +2,7 @@
 Test check_input_files and generate_report — without requiring all engines.
 """
 
-import os, sys
+import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -10,8 +10,6 @@ _proj_root = Path(__file__).resolve().parent.parent
 for _p in [str(_proj_root), str(_proj_root / "engines")]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
-
-os.environ["GRAPHRAG_ENABLED"] = "False"
 
 _CUSTOM_TEMPLATE = "# 第一章：市场概况\n- 市场整体表现\n# 第二章：趋势分析\n- 发展趋势\n"
 
@@ -41,7 +39,7 @@ def test_generate_report_without_insight():
         REPORT_ENGINE_API_KEY="sk-fake-key", REPORT_ENGINE_MODEL_NAME="test-model",
         REPORT_ENGINE_BASE_URL="https://test.api.com",
         OUTPUT_DIR="/tmp/test_report_reports", CHAPTER_OUTPUT_DIR="/tmp/test_report_reports/chapters",
-        DOCUMENT_IR_OUTPUT_DIR="/tmp/test_report_reports/ir", GRAPHRAG_ENABLED=False,
+        DOCUMENT_IR_OUTPUT_DIR="/tmp/test_report_reports/ir",
     )
     chapter_responses = {"S1": _make_chapter("S1", "市场概况"), "S2": _make_chapter("S2", "趋势分析")}
     fake_chapter = lambda section, ctx, run_dir, **kw: chapter_responses.get(getattr(section, "chapter_id", None), _make_chapter("S0", "未知"))

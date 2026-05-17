@@ -75,10 +75,6 @@ class Settings(BaseSettings):
     KEYWORD_OPTIMIZER_BASE_URL: Optional[str] = Field(None, description="Keyword Optimizer BaseUrl，可按所选服务配置")
     KEYWORD_OPTIMIZER_MODEL_NAME: Optional[str] = Field(None, description="Keyword Optimizer LLM 模型名称，例如 qwen-plus")
     
-    # ================== GraphRAG 配置 ====================
-    GRAPHRAG_ENABLED: bool = Field(False, description="是否启用GraphRAG知识图谱功能（true/false）")
-    GRAPHRAG_MAX_QUERIES: int = Field(3, description="GraphRAG每个章节生成前的最大查询次数")
-    
     # ================== 网络工具配置 ====================
     # Tavily API（申请地址：https://www.tavily.com/）
     TAVILY_API_KEY: Optional[str] = Field(None, description="Tavily API（申请地址：https://www.tavily.com/）API密钥，用于Tavily网络搜索")
@@ -161,7 +157,6 @@ def reload_settings() -> Settings:
         'FORUM_HOST_API_KEY', 'FORUM_HOST_BASE_URL', 'FORUM_HOST_MODEL_NAME',
         'KEYWORD_OPTIMIZER_API_KEY', 'KEYWORD_OPTIMIZER_BASE_URL', 'KEYWORD_OPTIMIZER_MODEL_NAME',
         'TAVILY_API_KEY', 'SEARCH_TOOL_TYPE', 'BOCHA_WEB_SEARCH_API_KEY', 'ANSPIRE_API_KEY',
-        'GRAPHRAG_ENABLED', 'GRAPHRAG_MAX_QUERIES',
         'SENTINEL_SPIDER_API_KEY', 'SENTINEL_SPIDER_BASE_URL', 'SENTINEL_SPIDER_MODEL_NAME',
     ]
     for k in _keys_to_clear:

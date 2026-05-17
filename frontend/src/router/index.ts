@@ -8,11 +8,6 @@ const router = createRouter({
       name: 'dashboard',
       component: () => import('@/views/Dashboard.vue'),
     },
-    {
-      path: '/graph-viewer/:reportId?',
-      name: 'graph-viewer',
-      component: () => import('@/views/GraphViewerPage.vue'),
-    },
   ],
 })
 

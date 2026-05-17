@@ -21,9 +21,6 @@ class ReportGraphState(TypedDict, total=False):
     word_plan: dict
     generation_context: dict
     template_overview: dict
-    # GraphRAG
-    graphrag_enabled: bool
-    knowledge_graph: Any
     # Output
     chapters: list
     document_ir: dict
